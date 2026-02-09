@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.vscode/
+data/
+
+data/
+experiments/
+*.npz
+*.h5
+*.pth
+__pycache__/

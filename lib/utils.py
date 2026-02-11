@@ -7,7 +7,7 @@ from sklearn.metrics import mean_squared_error
 from .metrics import masked_mape_np
 from scipy.sparse.linalg import eigs
 from .metrics import masked_mape_np,  masked_mae,masked_mse,masked_rmse,masked_mae_test,masked_rmse_test
-
+import csv
 
 def re_normalization(x, mean, std):
     x = x * std + mean
@@ -179,6 +179,14 @@ def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_d
     test_x = file_data['test_x']
     test_x = test_x[:, :, 0:1, :]
     test_target = file_data['test_target']
+
+    if train_target.shape[1] != train_x.shape[1] and train_target.shape[2] == train_x.shape[1]:
+        train_target = np.transpose(train_target, (0, 2, 1))
+    if val_target.shape[1] != val_x.shape[1] and val_target.shape[2] == val_x.shape[1]:
+        val_target = np.transpose(val_target, (0, 2, 1))
+    if test_target.shape[1] != test_x.shape[1] and test_target.shape[2] == test_x.shape[1]:
+        test_target = np.transpose(test_target, (0, 2, 1))
+
 
     mean = file_data['mean'][:, :, 0:1, :]  # (1, 1, 3, 1)
     std = file_data['std'][:, :, 0:1, :]  # (1, 1, 3, 1)
@@ -390,5 +398,32 @@ def predict_and_save_results_mstgcn(net, data_loader, data_target_tensor, global
         print('all MAPE: %.2f' % (mape))
         excel_list.extend([mae, rmse, mape])
         print(excel_list)
+
+        # 1. 保存模型评估指标参数 (MAE, RMSE, MAPE)
+        metrics_csv_path = os.path.join(params_path, f'metrics_results_{type}.csv')
+        with open(metrics_csv_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['预测步长 (Step)', 'MAE', 'RMSE', 'MAPE'])
+            # 写入每一步的预测指标
+            for i in range(prediction_length):
+                writer.writerow([f'第{i+1}步', excel_list[i*3], excel_list[i*3+1], excel_list[i*3+2]])
+            # 写入总体平均指标
+            writer.writerow(['总体平均', mae, rmse, mape])
+        print(f'模型指标已保存至: {metrics_csv_path}')
+
+        # 2. 保存预测值与真实值对比 (为了防止文件过大，建议保存部分节点或展平保存)
+        # 这里演示保存前 5 个节点在所有时间步的对比数据，方便直接绘图
+        preds_csv_path = os.path.join(params_path, f'predictions_compare_{type}.csv')
+        with open(preds_csv_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['样本索引', '节点索引', '预测步长', '预测值 (Prediction)', '真实值 (Target)'])
+            
+            # 遍历数据进行保存 (示例：保存前 10 个节点的数据)
+            for s in range(prediction.shape[0]):
+                for n in range(min(prediction.shape[1], 10)): 
+                    for t in range(prediction.shape[2]):
+                        writer.writerow([s, n, t, prediction[s, n, t], data_target_tensor[s, n, t]])
+        print(f'详细预测数据已保存至: {preds_csv_path}')
+    
 
 

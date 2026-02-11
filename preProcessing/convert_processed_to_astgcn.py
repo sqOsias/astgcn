@@ -58,6 +58,9 @@ def main():
     X = data["x"]
     Y = data["y"]
 
+    if Y.shape[1] != X.shape[2]:
+        Y = np.transpose(Y, (0, 2, 1))
+
     (train_x, train_y), (val_x, val_y), (test_x, test_y) = split_data(X, Y, train_ratio=0.6, val_ratio=0.2)
 
     train_x_b_n_f_t = to_b_n_f_t(train_x)

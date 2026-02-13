@@ -25,7 +25,7 @@ def re_max_min_normalization(x, _max, _min):
     x = 1. * x * (_max - _min) + _min
     return x
 
-# todo 举例说明adj_mat.npy格式
+
 def get_adjacency_matrix(distance_df_filename, num_of_vertices, id_filename=None):
     '''
     Parameters
@@ -87,6 +87,7 @@ def get_adjacency_matrix(distance_df_filename, num_of_vertices, id_filename=None
 
 def scaled_Laplacian(W):
     '''
+    计算归一化（缩放）后的拉普拉斯矩阵，用于图卷积操作。
     compute \tilde{L}
 
     Parameters
@@ -100,18 +101,19 @@ def scaled_Laplacian(W):
     '''
 
     assert W.shape[0] == W.shape[1]
-
+    # 计算度矩阵 将其所有连接边的权重相加，得到每个节点的度，放在对角线上
     D = np.diag(np.sum(W, axis=1))
-
+    # 计算 组合拉普拉斯矩阵
     L = D - W
-
+    # 计算最大特征值
     lambda_max = eigs(L, k=1, which='LR')[0].real
-
+    # 归一化拉普拉斯矩阵
     return (2 * L) / lambda_max - np.identity(W.shape[0])
 
 
 def cheb_polynomial(L_tilde, K):
     '''
+    计算0到K-1阶的切比雪夫多项式，用于图卷积操作。
     compute a list of chebyshev polynomials from T_0 to T_{K-1}
 
     Parameters
@@ -135,7 +137,7 @@ def cheb_polynomial(L_tilde, K):
 
     return cheb_polynomials
 
-# todo 理解
+
 def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_days, num_of_weeks, DEVICE, batch_size, shuffle=True):
     '''
     这个是为PEMS的数据准备的函数
@@ -169,6 +171,7 @@ def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_d
 
     file_data = np.load(filename + '.npz')
     train_x = file_data['train_x']  # (10181, 307, 3, 12)
+    # 只使用流量这一个通道 todo 速度预测为什么这里使用流量通道
     train_x = train_x[:, :, 0:1, :]
     train_target = file_data['train_target']  # (10181, 307, 12)
 
@@ -180,6 +183,7 @@ def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_d
     test_x = test_x[:, :, 0:1, :]
     test_target = file_data['test_target']
 
+    # 目标维度自检，必要时从 (B,T,N) 转到 (B,N,T)
     if train_target.shape[1] != train_x.shape[1] and train_target.shape[2] == train_x.shape[1]:
         train_target = np.transpose(train_target, (0, 2, 1))
     if val_target.shape[1] != val_x.shape[1] and val_target.shape[2] == val_x.shape[1]:
@@ -190,6 +194,7 @@ def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_d
     mean = file_data['mean'][:, :, 0:1, :]  # (1, 1, 3, 1)
     std = file_data['std'][:, :, 0:1, :]  # (1, 1, 3, 1)
 
+    #构建pytorch dataloader 将numpy数组转换为tensor
     # ------- train_loader -------
     train_x_tensor = torch.from_numpy(train_x).type(torch.FloatTensor).to(DEVICE)  # (B, N, F, T)
     train_target_tensor = torch.from_numpy(train_target).type(torch.FloatTensor).to(DEVICE)  # (B, N, T)
@@ -224,6 +229,7 @@ def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_d
 
 def compute_val_loss_mstgcn(net, val_loader, criterion,  masked_flag,missing_value,sw, epoch, limit=None):
     '''
+    计算模型在验证集上的损失。在验证集上评估模型的性能
     for rnn, compute mean loss on validation set
     :param net: model
     :param val_loader: torch.utils.data.utils.DataLoader

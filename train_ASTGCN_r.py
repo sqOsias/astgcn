@@ -73,7 +73,7 @@ print('params_path:', params_path)
 train_loader, train_target_tensor, val_loader, val_target_tensor, test_loader, test_target_tensor, _mean, _std = load_graphdata_channel1(
     graph_signal_matrix_filename, num_of_hours,
     num_of_days, num_of_weeks, DEVICE, batch_size)
-# 读取传感器之间的邻接矩阵（Adjacency Matrix），构建图结构 todo
+# 读取传感器之间的邻接矩阵（Adjacency Matrix），构建图结构 
 adj_mx, distance_mx = get_adjacency_matrix(adj_filename, num_of_vertices, id_filename)
 # 模型构建：从邻接计算拉普拉斯与 K 阶切比多项式→装配 ASTGCN 模块
 net = make_model(DEVICE, nb_block, in_channels, K, nb_chev_filter, nb_time_filter, time_strides, adj_mx,

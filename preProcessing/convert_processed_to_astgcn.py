@@ -51,6 +51,7 @@ def main():
     parser.add_argument("--num_of_hours", default=1, type=int)
     parser.add_argument("--num_of_days", default=0, type=int)
     parser.add_argument("--num_of_weeks", default=0, type=int)
+    parser.add_argument("--input_feature_index", default=2, type=int)
     args = parser.parse_args()
 
     npz_path = os.path.join(args.processed_dir, "train_data.npz")
@@ -66,6 +67,11 @@ def main():
     train_x_b_n_f_t = to_b_n_f_t(train_x)
     val_x_b_n_f_t = to_b_n_f_t(val_x)
     test_x_b_n_f_t = to_b_n_f_t(test_x)
+
+    idx = int(args.input_feature_index)
+    train_x_b_n_f_t = train_x_b_n_f_t[:, :, idx:idx+1, :]
+    val_x_b_n_f_t = val_x_b_n_f_t[:, :, idx:idx+1, :]
+    test_x_b_n_f_t = test_x_b_n_f_t[:, :, idx:idx+1, :]
 
     mean, std = compute_stats(train_x_b_n_f_t)
 

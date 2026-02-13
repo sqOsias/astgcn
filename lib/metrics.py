@@ -20,6 +20,9 @@ def masked_mape_np(y_true, y_pred, null_val=np.nan):
 
 
 def masked_mse(preds, labels, null_val=np.nan):
+    """
+    计算均方误差（MSE），并根据掩码忽略无效值。
+    """
     if np.isnan(null_val):
         mask = ~torch.isnan(labels)
     else:
@@ -41,6 +44,9 @@ def masked_rmse(preds, labels, null_val=np.nan):
 
 
 def masked_mae(preds, labels, null_val=np.nan):
+    """
+    计算平均绝对误差（MAE），并根据掩码忽略无效值。
+    """
     if np.isnan(null_val):
         mask = ~torch.isnan(labels)
     else:

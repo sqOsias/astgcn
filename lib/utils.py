@@ -25,7 +25,7 @@ def re_max_min_normalization(x, _max, _min):
     x = 1. * x * (_max - _min) + _min
     return x
 
-
+# todo 举例说明adj_mat.npy格式
 def get_adjacency_matrix(distance_df_filename, num_of_vertices, id_filename=None):
     '''
     Parameters
@@ -135,7 +135,7 @@ def cheb_polynomial(L_tilde, K):
 
     return cheb_polynomials
 
-
+# todo 理解
 def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_days, num_of_weeks, DEVICE, batch_size, shuffle=True):
     '''
     这个是为PEMS的数据准备的函数
@@ -179,6 +179,13 @@ def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_d
     test_x = file_data['test_x']
     test_x = test_x[:, :, 0:1, :]
     test_target = file_data['test_target']
+
+    if train_target.shape[1] != train_x.shape[1] and train_target.shape[2] == train_x.shape[1]:
+        train_target = np.transpose(train_target, (0, 2, 1))
+    if val_target.shape[1] != val_x.shape[1] and val_target.shape[2] == val_x.shape[1]:
+        val_target = np.transpose(val_target, (0, 2, 1))
+    if test_target.shape[1] != test_x.shape[1] and test_target.shape[2] == test_x.shape[1]:
+        test_target = np.transpose(test_target, (0, 2, 1))
 
     mean = file_data['mean'][:, :, 0:1, :]  # (1, 1, 3, 1)
     std = file_data['std'][:, :, 0:1, :]  # (1, 1, 3, 1)

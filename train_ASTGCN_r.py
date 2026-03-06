@@ -68,18 +68,20 @@ print('folder_dir:', folder_dir)
 params_path = os.path.join('experiments', dataset_name, folder_dir)
 print('params_path:', params_path)
 
-
+# 核心逻辑: 根据 num_of_hours (近期), num_of_days (日周期), num_of_weeks (周周期) 来切分数据。
+# 这意味着模型不仅看过去几小时的数据，还看昨天同一时刻和上周同一时刻的数据。 ？？
 train_loader, train_target_tensor, val_loader, val_target_tensor, test_loader, test_target_tensor, _mean, _std = load_graphdata_channel1(
     graph_signal_matrix_filename, num_of_hours,
     num_of_days, num_of_weeks, DEVICE, batch_size)
-
+# 读取传感器之间的邻接矩阵（Adjacency Matrix），构建图结构 todo
 adj_mx, distance_mx = get_adjacency_matrix(adj_filename, num_of_vertices, id_filename)
-
+# 模型构建：从邻接计算拉普拉斯与 K 阶切比多项式→装配 ASTGCN 模块
 net = make_model(DEVICE, nb_block, in_channels, K, nb_chev_filter, nb_time_filter, time_strides, adj_mx,
                  num_for_predict, len_input, num_of_vertices)
 
 
 def train_main():
+    # 目录管理
     if (start_epoch == 0) and (not os.path.exists(params_path)):
         os.makedirs(params_path)
         print('create params directory %s' % (params_path))
@@ -103,6 +105,7 @@ def train_main():
     print('graph_signal_matrix_filename\t', graph_signal_matrix_filename)
     print('start_epoch\t', start_epoch)
     print('epochs\t', epochs)
+    # 损失函数与优化器配置
     masked_flag=0
     criterion = nn.L1Loss().to(DEVICE)
     criterion_masked = masked_mae
@@ -119,6 +122,7 @@ def train_main():
         criterion = nn.MSELoss().to(DEVICE)
         masked_flag= 0
     optimizer = optim.Adam(net.parameters(), lr=learning_rate)
+    # 参数统计与日志
     sw = SummaryWriter(logdir=params_path, flush_secs=5)
     print(net)
 
@@ -138,7 +142,7 @@ def train_main():
     best_val_loss = np.inf
 
     start_time = time()
-
+    # 断点续训加载，如果指定了非 0 的起始 Epoch，程序会去加载对应 Epoch 的权重文件，恢复模型状态继续训练
     if start_epoch > 0:
 
         params_filename = os.path.join(params_path, 'epoch_%s.params' % start_epoch)
@@ -154,37 +158,38 @@ def train_main():
 
         params_filename = os.path.join(params_path, 'epoch_%s.params' % epoch)
 
+        # 1. 验证集损失计算
         if masked_flag:
             val_loss = compute_val_loss_mstgcn(net, val_loader, criterion_masked, masked_flag,missing_value,sw, epoch)
         else:
             val_loss = compute_val_loss_mstgcn(net, val_loader, criterion, masked_flag, missing_value, sw, epoch)
 
-
+        # 2. 训练集损失计算 保存最优模型
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch
             torch.save(net.state_dict(), params_filename)
-            print('save parameters to file: %s' % params_filename)
-
+            print('save parameters to file: %s' % params_filename) # 保存当前 epoch 的模型参数
+        # 3. 训练
         net.train()  # ensure dropout layers are in train mode
 
         for batch_index, batch_data in enumerate(train_loader):
 
             encoder_inputs, labels = batch_data
 
-            optimizer.zero_grad()
+            optimizer.zero_grad()  # 清空梯度缓存，准备新的反向传播
 
-            outputs = net(encoder_inputs)
-
+            outputs = net(encoder_inputs)  # 前向传播，计算模型输出
+            # 4. 计算损失
             if masked_flag:
                 loss = criterion_masked(outputs, labels,missing_value)
             else :
                 loss = criterion(outputs, labels)
 
 
-            loss.backward()
+            loss.backward()  # 反向传播，计算梯度
 
-            optimizer.step()
+            optimizer.step()  # 更新模型参数
 
             training_loss = loss.item()
 
@@ -204,7 +209,7 @@ def train_main():
 
 def predict_main(global_step, data_loader, data_target_tensor,metric_method, _mean, _std, type):
     '''
-
+    预测函数 使用验证集上表现最好的epoch 模型参数 对测试集进行预测
     :param global_step: int
     :param data_loader: torch.utils.data.utils.DataLoader
     :param data_target_tensor: tensor
@@ -213,12 +218,12 @@ def predict_main(global_step, data_loader, data_target_tensor,metric_method, _me
     :param type: string
     :return:
     '''
-
+    # 1. 构造权重文件
     params_filename = os.path.join(params_path, 'epoch_%s.params' % global_step)
     print('load weight from:', params_filename)
-
+    # 2. 加载模型参数
     net.load_state_dict(torch.load(params_filename))
-
+    # 3. 预测并保存结果
     predict_and_save_results_mstgcn(net, data_loader, data_target_tensor, global_step, metric_method,_mean, _std, params_path, type)
 
 

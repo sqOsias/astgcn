@@ -1,0 +1,1 @@
+python train_ASTGCN_r.py --config configurations/PEMS04_astgcn.conf

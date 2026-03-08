@@ -3,17 +3,17 @@ import pandas as pd
 import os
 import pickle
 
-
+"""
+数据预处理类，用于加载、分析缺失值、修复缺失值、归一化数据等操作
+"""
 class DataPreprocessor:
-    """
-    针对 PeMSD4 数据集的预处理工具类
-    功能：数据加载、缺失值分析、插值修复、Z-Score归一化、邻接矩阵构建
-    """
-    def __init__(self, data_path, distance_path, device='cpu'):
+    def __init__(self, data_path, distance_path, device='cpu', interp_method='linear', zscore_clip=None):
         self.data_path = data_path
         self.distance_path = distance_path
         self.mean = None
         self.std = None
+        self.interp_method = interp_method
+        self.zscore_clip = zscore_clip
         
     def load_raw_data(self):
         """
@@ -26,9 +26,6 @@ class DataPreprocessor:
         return data
 
     def analyze_missing_values(self, data):
-        """
-        分析缺失值情况。在 PeMS 数据中，0 值通常代表缺失点 
-        """
         total_elements = data.size
         zero_count = np.sum(data == 0)
         missing_rate = (zero_count / total_elements) * 100
@@ -38,20 +35,19 @@ class DataPreprocessor:
         return missing_rate
 
     def repair_data(self, data):
-        """
-        设计插值修复算法 
-        对于速度（特征索引2）中的0值，采用线性插值或时序邻域均值修复
-        """
         repaired_data = data.copy()
+        if self.zscore_clip is not None:
+            mu = np.nanmean(np.where(repaired_data == 0, np.nan, repaired_data), axis=(0, 1), keepdims=True)
+            sigma = np.nanstd(np.where(repaired_data == 0, np.nan, repaired_data), axis=(0, 1), keepdims=True)
+            z = (repaired_data - mu) / (sigma + 1e-8)
+            mask = np.abs(z) > self.zscore_clip
+            repaired_data[mask] = 0
         for node in range(data.shape[1]):
             for feat in range(data.shape[2]):
                 series = repaired_data[:, node, feat]
                 if np.any(series == 0):
-                    # 将0转换为NaN以便使用pandas的插值功能
                     temp_series = pd.Series(series).replace(0, np.nan)
-                    # 采用双向线性插值填充单点缺失
-                    temp_series = temp_series.interpolate(method='linear', limit_direction='both')
-                    # 对于长序列缺失，使用均值填充剩余部分
+                    temp_series = temp_series.interpolate(method=self.interp_method, limit_direction='both')
                     temp_series = temp_series.fillna(temp_series.mean())
                     repaired_data[:, node, feat] = temp_series.values
         print("Data interpolation repair completed")

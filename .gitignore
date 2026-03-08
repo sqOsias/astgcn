@@ -9,3 +9,6 @@ experiments/
 *.h5
 *.pth
 __pycache__/
+
+*.xml
+.idea/

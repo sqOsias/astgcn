@@ -88,3 +88,17 @@ astgcn/
 *   **K (3)**: 切比雪夫多项式阶数，决定了图卷积捕捉空间邻域的深度。
 *   **nb_block (2)**: 堆叠的时空块数量。
 *   **loss_function (mse)**: 训练损失函数。建议针对缺失值较多的数据集尝试 `masked_mae`。
+
+
+## 启动推理服务（最小示例）
+
+- pip install fastapi uvicorn
+- uvicorn api.server:app --reload
+- POST /warmup 参数示例：
+  - config_path=configurations/PEMS04_astgcn.conf
+  - params_path=experiments/PEMS04/astgcn_r_h1d0w0_channel1_1.000000e-03/epoch_X.params
+- POST /predict
+  - JSON: {"values":[N个节点的最新速度]}
+  - 返回 {"pred":[N×T_out]}（已反归一化）
+- 实时模拟：
+  - python scripts/realtime_simulator.py --base_graph_path ./data/PEMS04/PEMS04.npz --interval 0.1

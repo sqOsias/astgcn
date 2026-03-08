@@ -2,7 +2,10 @@ import os
 import numpy as np
 import argparse
 import configparser
-
+"""
+- 将 week/day/hour 三类历史片段按 r/d/w 拼接，生成 *_astcgn.npz（包含 train/val/test 的 x/target 与 mean/std）
+- T_in= num_for_predict × (r+d+w)，与配置联动
+"""
 
 def search_data(sequence_length, num_of_depend, label_start_idx,
                 num_for_predict, units, points_per_hour):

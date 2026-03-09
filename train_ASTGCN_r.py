@@ -18,10 +18,12 @@ from lib.metrics import masked_mape_np,  masked_mae,masked_mse,masked_rmse
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", default='configurations/METR_LA_astgcn.conf', type=str,
                     help="configuration file path")
+parser.add_argument("--cpu", action='store_true', default=False,
+                    help="use CPU for training (default: use GPU if available)")
 args = parser.parse_args()
 config = configparser.ConfigParser()
 print('Read configuration file: %s' % (args.config))
-config.read(args.config)
+config.read(args.config, encoding='utf-8')
 data_config = config['Data']
 training_config = config['Training']
 
@@ -41,10 +43,20 @@ dataset_name = data_config['dataset_name']
 model_name = training_config['model_name']
 
 ctx = training_config['ctx']
-os.environ["CUDA_VISIBLE_DEVICES"] = ctx
-USE_CUDA = torch.cuda.is_available()
-DEVICE = torch.device('cuda:0')
-print("CUDA:", USE_CUDA, DEVICE)
+if args.cpu:
+    # 使用 CPU
+    DEVICE = torch.device('cpu')
+    USE_CUDA = False
+    print("CUDA:", USE_CUDA, "DEVICE:", DEVICE)
+    print("✓ 使用 CPU 进行训练")
+else:
+    # 使用 GPU
+    os.environ["CUDA_VISIBLE_DEVICES"] = ctx
+    USE_CUDA = torch.cuda.is_available()
+    DEVICE = torch.device('cuda:0' if USE_CUDA else 'cpu')
+    print("CUDA:", USE_CUDA, DEVICE)
+    if not USE_CUDA:
+        print("⚠ CUDA 不可用，自动切换到 CPU")
 
 learning_rate = float(training_config['learning_rate'])
 epochs = int(training_config['epochs'])

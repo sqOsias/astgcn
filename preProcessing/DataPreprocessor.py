@@ -34,6 +34,9 @@ class DataPreprocessor:
         print(f"Initial missing rate: {missing_rate:.2f}%")
         return missing_rate
 
+    """
+     数据修复（插值 + Z-Score 去噪）
+    """
     def repair_data(self, data):
         repaired_data = data.copy()
         if self.zscore_clip is not None:
@@ -77,12 +80,22 @@ class DataPreprocessor:
             raise ValueError("Not normalized, cannot reverse operation")
         return normalized_data * self.std + self.mean
 
-    def build_adjacency_matrix(self, sigma=10, epsilon=0.5):
+    def build_adjacency_matrix(self, sigma=500, epsilon=0.1):
         """
         根据 distance.csv 构建邻接矩阵 
         采用高斯核函数计算语义相似度
+        sigma: 高斯核参数 (建议设为距离标准差或中位数，PEMS04约为250-500)
+        epsilon: 阈值，小于此值的权重会被过滤掉
         """
         try:
+            if not os.path.exists(self.distance_path):
+                print(f"Warning: {self.distance_path} not found. Trying pemsd4.csv...")
+                dir_name = os.path.dirname(self.distance_path)
+                alt_path = os.path.join(dir_name, 'pemsd4.csv')
+                if os.path.exists(alt_path):
+                    self.distance_path = alt_path
+                    print(f"Using {self.distance_path} instead.")
+            
             df = pd.read_csv(self.distance_path)
             # 关键修复：确保列名正确，通常 PeMS 是 'from', 'to', 'cost'
             # 如果csv没有表头，需要根据实际情况调整，这里假设有表头
@@ -129,10 +142,51 @@ class DataPreprocessor:
         构造监督学习数据集 [cite: 40]
         window_size: 历史时间窗口长度
         horizon: 预测未来时间步长
+        增加了时间特征嵌入：hour_of_day, day_of_week
         """
+        # 生成时间特征 (Time Embedding)
+        # 假设数据是从 2018-01-01 00:00:00 开始，每5分钟一个点
+        # PEMS04: 2018-01-01 to 2018-02-28 (59 days) -> 16992 steps
+        start_date = pd.Timestamp('2018-01-01 00:00:00')
+        timestamps = [start_date + pd.Timedelta(minutes=5*i) for i in range(len(data))]
+        
+        # 归一化时间特征 (0-1)
+        # hour_of_day: 0-23 -> /23
+        # day_of_week: 0-6 -> /6
+        # minute_of_hour: 0-55 -> /59
+        
+        time_features = []
+        for ts in timestamps:
+            # 简单的归一化时间特征
+            t_hour = ts.hour / 23.0
+            t_day = ts.dayofweek / 6.0
+            # t_min = ts.minute / 59.0 # Optional
+            time_features.append([t_hour, t_day])
+            
+        time_features = np.array(time_features) # (T, 2)
+        
+        # 将时间特征扩展到所有节点
+        # data shape: (T, N, F)
+        # time_features shape: (T, 2)
+        T, N, F = data.shape
+        time_features = np.array(time_features)
+        
+        # 修复：正确构造 time_features_expanded
+        # 先 reshape time_features 到 (T, 1, 2)
+        # 然后 tile 到 (T, N, 2)
+        time_features_expanded = np.tile(time_features[:, np.newaxis, :], (1, N, 1))
+        
+        # 合并特征: (T, N, F+2)
+        # 注意：这里我们把时间特征拼接到特征维度上
+        # 原始特征：Flow, Occupy, Speed
+        # 新特征：Flow, Occupy, Speed, HourNorm, DayNorm
+        data_with_time = np.concatenate([data, time_features_expanded], axis=2)
+        
+        print(f"Time embedding added. New feature shape: {data_with_time.shape}")
+        
         x, y = [], []
         for i in range(len(data) - window_size - horizon):
-            x.append(data[i : i + window_size, ...])
+            x.append(data_with_time[i : i + window_size, ...])
             # 预测目标通常为速度（索引2）
             y.append(data[i + window_size : i + window_size + horizon, :, 2])
             
@@ -140,20 +194,37 @@ class DataPreprocessor:
     
 
     # 预处理数据持久化
-    def save_processed_data(self, X, Y, adj, save_dir='./data/processed/'):
+    def save_processed_data(self, X, Y, adj, save_dir='./data/processed/', split_ratio=(0.6, 0.2, 0.2)):
         """
         将预处理后的数据和元数据保存到本地
+        自动执行数据集划分：训练集/验证集/测试集
         """
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
             print(f"create Directory: {save_dir}")
 
-        # 1. 保存特征和标签张量 (使用压缩格式以节省空间)
+        # 数据集划分
+        samples = X.shape[0]
+        train_size = int(samples * split_ratio[0])
+        val_size = int(samples * split_ratio[1])
+        
+        train_x, val_x, test_x = X[:train_size], X[train_size:train_size+val_size], X[train_size+val_size:]
+        train_y, val_y, test_y = Y[:train_size], Y[train_size:train_size+val_size], Y[train_size+val_size:]
+        
+        print(f"Data Split Summary:")
+        print(f"  - Train: {train_x.shape}")
+        print(f"  - Val:   {val_x.shape}")
+        print(f"  - Test:  {test_x.shape}")
+
+        # 1. 保存特征和标签张量 (兼容 ASTGCN loader 格式)
         # 对应任务书：构建时空序列特征数据集 
         np.savez_compressed(
             os.path.join(save_dir, 'train_data.npz'), 
-            x=X, 
-            y=Y
+            x=X, y=Y,  # 保留原始全量数据
+            train_x=train_x, train_target=train_y,
+            val_x=val_x, val_target=val_y,
+            test_x=test_x, test_target=test_y,
+            mean=self.mean, std=self.std # 保存归一化参数到同一文件方便读取
         )
         
         # 2. 保存邻接矩阵
@@ -176,8 +247,8 @@ class DataPreprocessor:
 if __name__ == "__main__":
     # 初始化预处理类
     preprocessor = DataPreprocessor(
-        data_path='./data/PEMS04/PEMS04.npz', 
-        distance_path='./data/PEMS04/distance.csv'
+        data_path='./data/PEMS04/pemsd4.npz', 
+        distance_path='./data/PEMS04/pemsd4.csv'
     )
     
     # 1. 加载数据

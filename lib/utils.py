@@ -159,29 +159,88 @@ def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_d
     test_target_tensor: (B, N_nodes, T_output)
 
     '''
+    
+    # 自动识别是否是预处理后的 .npz 文件
+    if graph_signal_matrix_filename.endswith('.npz') and 'processed' in graph_signal_matrix_filename:
+        print('load processed file:', graph_signal_matrix_filename)
+        file_data = np.load(graph_signal_matrix_filename)
+        
+        train_x = file_data['train_x']
+        train_target = file_data['train_target']
+        val_x = file_data['val_x']
+        val_target = file_data['val_target']
+        test_x = file_data['test_x']
+        test_target = file_data['test_target']
+        
+        # 兼容性处理：只取速度通道(索引2)作为目标
+        # PEMS04: 0-flow, 1-occupy, 2-speed, 3-hour_norm, 4-day_norm
+        
+        # 检查数据维度，PEMS04预处理后是 (B, T, N, F)
+        # ASTGCN 需要 (B, N, F, T)
+        if train_x.shape[1] == 12 and train_x.shape[2] == 307: # (B, T, N, F)
+            train_x = train_x.transpose(0, 2, 3, 1) # (B, N, F, T)
+            val_x = val_x.transpose(0, 2, 3, 1)
+            test_x = test_x.transpose(0, 2, 3, 1)
+            
+            train_target = train_target.transpose(0, 2, 1) # (B, T, N) -> (B, N, T)
+            val_target = val_target.transpose(0, 2, 1)
+            test_target = test_target.transpose(0, 2, 1)
 
-    file = os.path.basename(graph_signal_matrix_filename).split('.')[0]
+        # 动态选择通道
+        # 如果有5个通道 (Speed, Time, Time)，我们取 [2, 3, 4]
+        # 如果只有3个通道 (Flow, Occ, Speed)，我们取 [2] (Speed)
+        if train_x.shape[2] >= 5:
+            # 取 Speed, Hour, Day
+            # Indices: 2, 3, 4
+            # 注意：ASTGCN 需要 in_channels = 3
+            train_x = train_x[:, :, 2:5, :] 
+            val_x = val_x[:, :, 2:5, :]
+            test_x = test_x[:, :, 2:5, :]
+            
+            # Mean/Std 只需要 Speed 的 (用于反归一化)
+            mean = file_data['mean'][2] 
+            std = file_data['std'][2]
+        else:
+            # 只有 Speed (或原始3通道)
+            # 强制只取速度通道 (Index 2)
+            train_x = train_x[:, :, 2:3, :] 
+            val_x = val_x[:, :, 2:3, :]
+            test_x = test_x[:, :, 2:3, :]
+            
+            mean = file_data['mean'][2] # 速度均值
+            std = file_data['std'][2]   # 速度方差
+        
+        # 构造成 (1, 1, 1, 1) 格式以匹配后续反归一化
+        mean = np.array([[[[mean]]]])
+        std = np.array([[[[std]]]])
 
-    dirpath = os.path.dirname(graph_signal_matrix_filename)
+    else:
+        # 原始逻辑
+        file = os.path.basename(graph_signal_matrix_filename).split('.')[0]
 
-    filename = os.path.join(dirpath,
-                            file + '_r' + str(num_of_hours) + '_d' + str(num_of_days) + '_w' + str(num_of_weeks)) +'_astcgn'
+        dirpath = os.path.dirname(graph_signal_matrix_filename)
 
-    print('load file:', filename)
+        filename = os.path.join(dirpath,
+                                file + '_r' + str(num_of_hours) + '_d' + str(num_of_days) + '_w' + str(num_of_weeks)) +'_astcgn'
 
-    file_data = np.load(filename + '.npz')
-    train_x = file_data['train_x']  # (10181, 307, 3, 12)
-    # 只使用流量这一个通道 todo 速度预测为什么这里使用流量通道
-    train_x = train_x[:, :, 0:1, :]
-    train_target = file_data['train_target']  # (10181, 307, 12)
+        print('load file:', filename)
 
-    val_x = file_data['val_x']
-    val_x = val_x[:, :, 0:1, :]
-    val_target = file_data['val_target']
+        file_data = np.load(filename + '.npz')
+        train_x = file_data['train_x']  # (10181, 307, 3, 12)
+        # 只使用流量这一个通道 todo 速度预测为什么这里使用流量通道
+        train_x = train_x[:, :, 0:1, :]
+        train_target = file_data['train_target']  # (10181, 307, 12)
 
-    test_x = file_data['test_x']
-    test_x = test_x[:, :, 0:1, :]
-    test_target = file_data['test_target']
+        val_x = file_data['val_x']
+        val_x = val_x[:, :, 0:1, :]
+        val_target = file_data['val_target']
+
+        test_x = file_data['test_x']
+        test_x = test_x[:, :, 0:1, :]
+        test_target = file_data['test_target']
+        
+        mean = file_data['mean'][:, :, 0:1, :]  # (1, 1, 3, 1)
+        std = file_data['std'][:, :, 0:1, :]  # (1, 1, 3, 1)
 
     # 目标维度自检，必要时从 (B,T,N) 转到 (B,N,T)
     if train_target.shape[1] != train_x.shape[1] and train_target.shape[2] == train_x.shape[1]:
@@ -190,27 +249,8 @@ def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_d
         val_target = np.transpose(val_target, (0, 2, 1))
     if test_target.shape[1] != test_x.shape[1] and test_target.shape[2] == test_x.shape[1]:
         test_target = np.transpose(test_target, (0, 2, 1))
-
-
-    if train_target.shape[1] != train_x.shape[1] and train_target.shape[2] == train_x.shape[1]:
-        train_target = np.transpose(train_target, (0, 2, 1))
-    if val_target.shape[1] != val_x.shape[1] and val_target.shape[2] == val_x.shape[1]:
-        val_target = np.transpose(val_target, (0, 2, 1))
-    if test_target.shape[1] != test_x.shape[1] and test_target.shape[2] == test_x.shape[1]:
-        test_target = np.transpose(test_target, (0, 2, 1))
-
-
-    if train_target.shape[1] != train_x.shape[1] and train_target.shape[2] == train_x.shape[1]:
-        train_target = np.transpose(train_target, (0, 2, 1))
-    if val_target.shape[1] != val_x.shape[1] and val_target.shape[2] == val_x.shape[1]:
-        val_target = np.transpose(val_target, (0, 2, 1))
-    if test_target.shape[1] != test_x.shape[1] and test_target.shape[2] == test_x.shape[1]:
-        test_target = np.transpose(test_target, (0, 2, 1))
-
-    mean = file_data['mean'][:, :, 0:1, :]  # (1, 1, 3, 1)
-    std = file_data['std'][:, :, 0:1, :]  # (1, 1, 3, 1)
-
-    #构建pytorch dataloader 将numpy数组转换为tensor
+    
+    # 构建pytorch dataloader 将numpy数组转换为tensor
     # ------- train_loader -------
     train_x_tensor = torch.from_numpy(train_x).type(torch.FloatTensor).to(DEVICE)  # (B, N, F, T)
     train_target_tensor = torch.from_numpy(train_target).type(torch.FloatTensor).to(DEVICE)  # (B, N, T)

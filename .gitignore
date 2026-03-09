@@ -12,3 +12,6 @@ __pycache__/
 
 *.xml
 .idea/
+*.log
+*.txt
+*.png

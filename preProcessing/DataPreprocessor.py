@@ -233,15 +233,17 @@ class DataPreprocessor:
 
         # 3. 保存归一化参数 (用于在线推理阶段的反归一化)
         # 对应开题报告：实现从理论算法到软件系统的转化 
+        # 使用 JSON 保存以避免 pickle/numpy 版本兼容性问题
         scaler_params = {
-            'mean': self.mean,
-            'std': self.std
+            'mean': self.mean.tolist() if isinstance(self.mean, np.ndarray) else self.mean,
+            'std': self.std.tolist() if isinstance(self.std, np.ndarray) else self.std
         }
-        with open(os.path.join(save_dir, 'scaler_params.pkl'), 'wb') as f:
-            pickle.dump(scaler_params, f)
+        import json
+        with open(os.path.join(save_dir, 'scaler_params.json'), 'w') as f:
+            json.dump(scaler_params, f)
             
         print(f"all processed data saved to: {save_dir}")
-        print(f"saved content: feature tensor X, label tensor Y, adjacency matrix Adj, normalization parameters Mean/Std")
+        print(f"saved content: feature tensor X, label tensor Y, adjacency matrix Adj, normalization parameters Mean/Std (JSON)")
 
 # 使用示例
 if __name__ == "__main__":

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Traffic Prediction</title>
+    <!-- Vue.js -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- ECharts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f3f4f6; }
+        .chart-container { height: 400px; width: 100%; }
+        .heatmap-container { height: 600px; width: 100%; }
+    </style>
+</head>
+<body>
+    <div id="app" class="container mx-auto p-4">
+        <header class="mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Traffic Speed Prediction System</h1>
+            <p class="text-gray-600">Real-time monitoring and forecasting based on ASTGCN</p>
+            <div class="mt-2 flex items-center space-x-4">
+                <span class="px-3 py-1 rounded-full text-sm font-semibold" 
+                      :class="status === 'online' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'">
+                    System Status: {{ status }}
+                </span>
+                <span class="text-sm text-gray-500">Last Update: {{ lastUpdate }}</span>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Prediction Chart -->
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Real-time Speed Prediction (Node {{ selectedNode }})</h2>
+                <div class="mb-4">
+                    <label class="text-sm text-gray-600">Select Node:</label>
+                    <select v-model="selectedNode" @change="initCharts" class="border rounded px-2 py-1">
+                        <option v-for="n in 307" :key="n" :value="n-1">Node {{ n-1 }}</option>
+                    </select>
+                </div>
+                <div id="lineChart" class="chart-container"></div>
+            </div>
+
+            <!-- Network Heatmap -->
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Network Congestion Heatmap</h2>
+                <div id="heatmapChart" class="chart-container"></div>
+            </div>
+        </div>
+        
+        <!-- Logs -->
+        <div class="mt-6 bg-white p-4 rounded-lg shadow">
+             <h2 class="text-xl font-semibold mb-4">System Logs</h2>
+             <div class="h-32 overflow-y-auto bg-gray-900 text-green-400 p-2 font-mono text-xs rounded">
+                 <div v-for="(log, i) in logs" :key="i">> {{ log }}</div>
+             </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted, onUnmounted } = Vue
+
+        createApp({
+            setup() {
+                const status = ref('offline')
+                const lastUpdate = ref('-')
+                const selectedNode = ref(0) // Default node
+                const logs = ref([])
+                
+                let lineChart = null
+                let heatmapChart = null
+                let intervalId = null
+                
+                // Data buffers
+                const timeData = []
+                const predData = []
+                const realData = [] // In a real scenario, we might receive real data too.
+                                    // For now, we only receive predictions from backend.
+                                    // But wait, the producer sends "real" data to backend.
+                                    // The backend returns prediction.
+                                    // Where do we get the "real" value for comparison?
+                                    // The backend *receives* real data. It could return it back?
+                                    // Let's check backend code.
+                                    // Backend: predict(req) -> returns {"predictions": ...}
+                                    // It doesn't return the input.
+                                    // We can modify backend to return input as well for visualization.
+                                    // Or we can assume the frontend is also listening to the producer? No.
+                                    // Let's stick to showing Prediction for now.
+                
+                const addLog = (msg) => {
+                    logs.value.unshift(new Date().toLocaleTimeString() + " " + msg)
+                    if (logs.value.length > 50) logs.value.pop()
+                }
+
+                const initCharts = () => {
+                    // Line Chart
+                    if (lineChart) lineChart.dispose()
+                    lineChart = echarts.init(document.getElementById('lineChart'))
+                    lineChart.setOption({
+                        tooltip: { trigger: 'axis' },
+                        legend: { data: ['Predicted Speed'] },
+                        xAxis: { type: 'category', data: timeData },
+                        yAxis: { type: 'value', name: 'Speed (mph)' },
+                        series: [
+                            {
+                                name: 'Predicted Speed',
+                                type: 'line',
+                                data: predData,
+                                smooth: true,
+                                lineStyle: { color: '#3b82f6' }
+                            }
+                        ]
+                    })
+
+                    // Heatmap
+                    // We need adjacency matrix or coordinates to plot a graph.
+                    // For simplicity, we can plot a matrix heatmap or a scatter plot if we had coords.
+                    // PEMS04 has no coords in public csv usually, just distance.
+                    // We can visualize the 1D array of speeds for all 307 nodes as a bar/heatmap line.
+                    if (heatmapChart) heatmapChart.dispose()
+                    heatmapChart = echarts.init(document.getElementById('heatmapChart'))
+                    heatmapChart.setOption({
+                        tooltip: { position: 'top' },
+                        grid: { height: '50%', top: '10%' },
+                        xAxis: {
+                            type: 'category',
+                            data: Array.from({length: 307}, (_, i) => i),
+                            splitArea: { show: true }
+                        },
+                        yAxis: {
+                            type: 'category',
+                            data: ['Current Speed'],
+                            splitArea: { show: true }
+                        },
+                        visualMap: {
+                            min: 0,
+                            max: 70,
+                            calculable: true,
+                            orient: 'horizontal',
+                            left: 'center',
+                            bottom: '15%',
+                            inRange: {
+                                color: ['#ef4444', '#eab308', '#22c55e'] // Red (Low speed) -> Green (High speed)
+                                // Actually traffic: Low speed = Congestion (Red), High = Free (Green)
+                            }
+                        },
+                        series: [{
+                            name: 'Network Speed',
+                            type: 'heatmap',
+                            data: [], // [x, y, value]
+                            label: { show: false }
+                        }]
+                    })
+                }
+
+                const fetchData = async () => {
+                    // In a real real-time app, we would use WebSocket.
+                    // Here we poll the backend?
+                    // Wait, the Producer PUSHES to the backend.
+                    // The Backend doesn't PUSH to Frontend unless we use WS.
+                    // Or Frontend polls Backend for "latest state".
+                    // But Backend is stateless (REST).
+                    // The Backend has a "buffer" in memory `state["buffer"]`.
+                    // We can add an endpoint to get the latest buffer/prediction.
+                    
+                    try {
+                        // We need a new endpoint in Backend: GET /latest
+                        // Let's assume we add it.
+                        // For now, let's just mock or fail gracefully.
+                        
+                        // Temporarily, we can't get data because Backend expects POST /predict.
+                        // The Producer is calling POST /predict.
+                        // The Frontend is just a viewer.
+                        // We need the Backend to store the latest result and serve it.
+                        
+                        // Let's Assume we add GET /latest_prediction to backend.
+                        const res = await fetch('http://127.0.0.1:8000/latest_prediction')
+                        if (res.ok) {
+                            const data = await res.json()
+                            status.value = 'online'
+                            lastUpdate.value = new Date().toLocaleTimeString()
+                            
+                            // Update Line Chart
+                            const pred = data.predictions[selectedNode.value] // Predicted speed for selected node
+                            // Assuming prediction is for T+1
+                            // We get a list of predictions (T_out steps). Let's take the first one.
+                            const nextStepPred = Array.isArray(pred) ? pred[0] : pred
+                            
+                            timeData.push(new Date().toLocaleTimeString())
+                            predData.push(nextStepPred)
+                            if (timeData.length > 20) {
+                                timeData.shift()
+                                predData.shift()
+                            }
+                            
+                            lineChart.setOption({
+                                xAxis: { data: timeData },
+                                series: [{ data: predData }]
+                            })
+                            
+                            // Update Heatmap
+                            // data.predictions is (307, T_out)
+                            // We take the first time step for all nodes
+                            const heatmapData = data.predictions.map((p, i) => [i, 0, Array.isArray(p) ? p[0] : p])
+                            heatmapChart.setOption({
+                                series: [{ data: heatmapData }]
+                            })
+                            
+                            addLog("Received update")
+                        }
+                    } catch (e) {
+                        status.value = 'offline'
+                        // addLog("Connection failed")
+                    }
+                }
+
+                onMounted(() => {
+                    initCharts()
+                    intervalId = setInterval(fetchData, 1000) // Poll every second
+                })
+
+                onUnmounted(() => {
+                    clearInterval(intervalId)
+                })
+
+                return {
+                    status,
+                    lastUpdate,
+                    selectedNode,
+                    logs
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>

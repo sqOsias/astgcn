@@ -9,8 +9,15 @@ import json
 import configparser
 from typing import List, Optional
 
+"""
+是基于 FastAPI 构建的实时流式交通速度预测 API 服务，
+核心特点是通过滚动缓冲区（buffer） 接收「单时间步」的交通节点数据（速度、时段特征等），累计足够的历史时间步后，
+调用 ASTGCN 模型输出未来车速预测结果；同时支持前端轮询获取最新预测值，适配 “实时、流式” 的交通数据输入场景
+"""
+
 # Add parent directory to path to import lib and model
 import sys
+# todo 这里的路径是相对于 main.py 的，所以需要 '../app/backend'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from models.ASTGCN_r import make_model
@@ -47,6 +54,16 @@ state = {
 
 # ==================== Data Models ====================
 class PredictionRequest(BaseModel):
+    """
+    预测请求模型
+    用于接收交通速度预测请求的 JSON 数据模型。
+    
+    Attributes:
+        values: 输入特征数据，2 维数组，shape: (N_nodes, F_features)
+            - N_nodes: 节点数量
+            - F_features: 特征维度（通常为 3，即 [Speed, HourNorm, DayNorm]）
+        timestamp: 可选，请求的时间戳，用于记录请求发生的时间。
+    """
     # Receives a single time step of data for all nodes
     # Shape: (N_nodes, F_features) 
     # F_features should be 3: [Speed, HourNorm, DayNorm]
@@ -86,7 +103,8 @@ def load_model(config_path, params_path):
     adj_mx, _ = get_adjacency_matrix(adj_filename, num_of_vertices, None)
     
     # Initialize Model
-    net = make_model(DEVICE, nb_block, in_channels, K, nb_chev_filter, nb_time_filter, time_strides, adj_mx, num_for_predict, len_input, num_of_vertices)
+    net = make_model(DEVICE, nb_block, in_channels, K, nb_chev_filter, nb_time_filter, 
+            time_strides, adj_mx, num_for_predict, len_input, num_of_vertices)
     
     # Load Weights
     if os.path.exists(params_path):
@@ -186,9 +204,9 @@ async def predict(req: PredictionRequest):
     # Roll buffer and append new data
     # Buffer: (N, F, T)
     # Shift left
-    state["buffer"][:, :, :-1] = state["buffer"][:, :, 1:]
+    state["buffer"][:, :, :-1] = state["buffer"][:, :, 1:] # 左移一位
     # Assign new data to last time step
-    state["buffer"][:, :, -1] = new_data
+    state["buffer"][:, :, -1] = new_data # 新数据放入最后一位
     
     # Prepare tensor
     # Model expects (B, N, F, T)

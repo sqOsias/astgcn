@@ -49,7 +49,7 @@ class cheb_conv_withSAt(nn.Module):
     '''
     带空间注意力机制的K阶切比雪夫图卷积
     使用静态图结构和动态空间注意力的结合
-    ??
+    图卷积的核心是利用图的拓扑结构（邻接关系）对节点特征进行聚合，切比雪夫图卷积通过切比雪夫多项式逼近图拉普拉斯矩阵的谱分解，降低计算复杂度
     K-order chebyshev graph convolution
     '''
 
@@ -60,10 +60,10 @@ class cheb_conv_withSAt(nn.Module):
         :param out_channels: int, num of channels in the output sequence
         '''
         super(cheb_conv_withSAt, self).__init__()
-        self.K = K
-        self.cheb_polynomials = cheb_polynomials
-        self.in_channels = in_channels
-        self.out_channels = out_channels
+        self.K = K # 切比雪夫多项式的阶数
+        self.cheb_polynomials = cheb_polynomials # 预计算的K阶切比雪夫多项式列表，每个元素是(N,N)的矩阵
+        self.in_channels = in_channels  # 输入特征维度F_in 
+        self.out_channels = out_channels  # 输出特征维度F_out
         self.DEVICE = cheb_polynomials[0].device
         self.Theta = nn.ParameterList([nn.Parameter(torch.FloatTensor(in_channels, out_channels).to(self.DEVICE)) for _ in range(K)])
 

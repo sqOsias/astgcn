@@ -43,16 +43,36 @@ async def validation_exception_handler(request, exc):
 
 # ==================== 数据模型 ====================
 class PredictionRequest(BaseModel):
-    """预测请求数据模型"""
+    """预测请求数据模型
+    用于接收交通速度预测请求的 JSON 数据模型。
+    
+    Attributes:
+        input_data: 输入特征数据，3 维数组，shape: (N_nodes, F_features, T_timestamps)
+            - N_nodes: 节点数量
+            - F_features: 特征维度（通常为 1，即速度）
+            - T_timestamps: 时间步长（输入序列长度）
+        node_ids: 可选，指定要预测的节点 ID 列表。如果为空，则对所有节点进行预测。
+        timestamp: 可选，请求的时间戳，用于记录请求发生的时间。
+    """
     input_data: List[List[List[float]]]  # shape: (N_nodes, F_features, T_timestamps)
     node_ids: Optional[List[int]] = None  # 可选：节点 ID 列表
     timestamp: Optional[str] = None  # 可选：时间戳
 
 class PredictionResponse(BaseModel):
-    """预测响应数据模型"""
-    status: str
+    """预测响应数据模型
+    用于返回交通速度预测结果的 JSON 数据模型。
+    
+    Attributes:
+        status: 状态，默认成功
+        predictions: 预测结果，2 维数组，shape: (N_nodes, T_output)
+            - N_nodes: 节点数量
+            - T_output: 预测时间步长（通常为 12）
+        confidence: 可选，置信度，0-1之间的浮点数
+        timestamp: 可选，请求的时间戳，用于记录响应发生的时间。
+    """
+    status: str = "success" # 状态，默认成功
     predictions: List[List[float]]  # shape: (N_nodes, T_output)
-    confidence: float = None
+    confidence: float = None # 置信度，0-1之间的浮点数
     timestamp: Optional[str] = None
 
 
@@ -144,6 +164,7 @@ async def predict(request: PredictionRequest):
             )
             
         # 加载标准化参数（从训练数据）
+        # todo 这里应该从训练数据加载
         mean = np.array([[[0.0]]])  # 应从训练数据加载
         std = np.array([[[1.0]]])   # 应从训练数据加载
         
@@ -160,6 +181,7 @@ async def predict(request: PredictionRequest):
         return PredictionResponse(
             status="success",
             predictions=pred_list,
+            # todo 这里应该根据模型置信度计算
             confidence=0.95,
             timestamp=request.timestamp
         )
@@ -178,6 +200,7 @@ async def predict_batch(requests: List[PredictionRequest]):
     try:
         batch_data = [np.array(req.input_data, dtype=np.float32) for req in requests]
         
+        # todo 同样 这里应该从训练数据加载
         mean = np.array([[[0.0]]])
         std = np.array([[[1.0]]])
         
@@ -229,5 +252,6 @@ async def root():
 
 
 if __name__ == "__main__":
+    # todo 请求是如何发送的
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

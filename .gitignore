@@ -5,7 +5,7 @@ __pycache__/
 
 # data/
 experiments/
-*.npz
+# *.npz
 *.h5
 *.pth
 __pycache__/

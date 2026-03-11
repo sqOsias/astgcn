@@ -136,42 +136,63 @@ def read_and_generate_dataset(graph_signal_matrix_filename,
     target: np.ndarray,
             shape is (num_of_samples, num_of_vertices, num_for_predict)
     '''
-    # 加载已预处理的数据 (来自 DataPreprocessor.save_processed_data)
-    data_file = np.load(graph_signal_matrix_filename)
-    
-    # train_data.npz 包含的键：x, y, train_x, train_target, val_x, val_target, test_x, test_target, mean, std
-    # 直接使用已经划分和格式化好的数据
-    train_x = data_file['train_x']  # (B, T, N, F)
-    train_target = data_file['train_target']  # (B, T, N) 或 (B, N, T)
-    val_x = data_file['val_x']
-    val_target = data_file['val_target']
-    test_x = data_file['test_x']
-    test_target = data_file['test_target']
-    
-    print(f"Loaded train_x shape: {train_x.shape}")
-    print(f"Loaded train_target shape: {train_target.shape}")
+    data_seq = np.load(graph_signal_matrix_filename)['data']  # (sequence_length, num_of_vertices, num_of_features)
 
-    # 数据已经是 (B, T, N, F) 或 (B, N, T) 格式，需要转换为 ASTGCN 所需的 (B, N, F, T) 格式
-    # 转换 train_x: (B, T, N, F) -> (B, N, F, T)
-    train_x = np.transpose(train_x, (0, 2, 3, 1))
-    val_x = np.transpose(val_x, (0, 2, 3, 1))
-    test_x = np.transpose(test_x, (0, 2, 3, 1))
-    
-    # 转换 target: 如果是 (B, T, N) -> (B, N, T)
-    if len(train_target.shape) == 3 and train_target.shape[1] != num_of_vertices:
-        train_target = np.transpose(train_target, (0, 2, 1))
-        val_target = np.transpose(val_target, (0, 2, 1))
-        test_target = np.transpose(test_target, (0, 2, 1))
-    
-    print(f"After transpose - train_x shape: {train_x.shape}")
-    print(f"After transpose - train_target shape: {train_target.shape}")
-    
-    # 生成时间戳
-    train_timestamp = np.arange(len(train_x)).reshape(-1, 1)
-    val_timestamp = np.arange(len(val_x)).reshape(-1, 1)
-    test_timestamp = np.arange(len(test_x)).reshape(-1, 1)
-    
-    # 归一化
+    all_samples = []
+    for idx in range(data_seq.shape[0]):
+        sample = get_sample_indices(data_seq, num_of_weeks, num_of_days,
+                                    num_of_hours, idx, num_for_predict,
+                                    points_per_hour)
+        if ((sample[0] is None) and (sample[1] is None) and (sample[2] is None)):
+            continue
+
+        week_sample, day_sample, hour_sample, target = sample
+
+        sample = []  # [(week_sample),(day_sample),(hour_sample),target,time_sample]
+
+        if num_of_weeks > 0:
+            week_sample = np.expand_dims(week_sample, axis=0).transpose((0, 2, 3, 1))  # (1,N,F,T)
+            sample.append(week_sample)
+
+        if num_of_days > 0:
+            day_sample = np.expand_dims(day_sample, axis=0).transpose((0, 2, 3, 1))  # (1,N,F,T)
+            sample.append(day_sample)
+
+        if num_of_hours > 0:
+            hour_sample = np.expand_dims(hour_sample, axis=0).transpose((0, 2, 3, 1))  # (1,N,F,T)
+            sample.append(hour_sample)
+
+        target = np.expand_dims(target, axis=0).transpose((0, 2, 3, 1))[:, :, 0, :]  # (1,N,T)
+        sample.append(target)
+
+        time_sample = np.expand_dims(np.array([idx]), axis=0)  # (1,1)
+        sample.append(time_sample)
+
+        all_samples.append(
+            sample)  # sampe：[(week_sample),(day_sample),(hour_sample),target,time_sample] = [(1,N,F,Tw),(1,N,F,Td),(1,N,F,Th),(1,N,Tpre),(1,1)]
+
+    split_line1 = int(len(all_samples) * 0.6)
+    split_line2 = int(len(all_samples) * 0.8)
+
+    training_set = [np.concatenate(i, axis=0)
+                    for i in zip(*all_samples[:split_line1])]  # [(B,N,F,Tw),(B,N,F,Td),(B,N,F,Th),(B,N,Tpre),(B,1)]
+    validation_set = [np.concatenate(i, axis=0)
+                      for i in zip(*all_samples[split_line1: split_line2])]
+    testing_set = [np.concatenate(i, axis=0)
+                   for i in zip(*all_samples[split_line2:])]
+
+    train_x = np.concatenate(training_set[:-2], axis=-1)  # (B,N,F,T')
+    val_x = np.concatenate(validation_set[:-2], axis=-1)
+    test_x = np.concatenate(testing_set[:-2], axis=-1)
+
+    train_target = training_set[-2]  # (B,N,T)
+    val_target = validation_set[-2]
+    test_target = testing_set[-2]
+
+    train_timestamp = training_set[-1]  # (B,1)
+    val_timestamp = validation_set[-1]
+    test_timestamp = testing_set[-1]
+
     (stats, train_x_norm, val_x_norm, test_x_norm) = normalization(train_x, val_x, test_x)
 
     all_data = {

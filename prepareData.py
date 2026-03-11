@@ -10,14 +10,16 @@ import configparser
 def search_data(sequence_length, num_of_depend, label_start_idx,
                 num_for_predict, units, points_per_hour):
     '''
+    根据 “预测起始点” 反向计算「周 / 日 / 小时」维度的历史数据切片索引
+    （比如 “要预测 8 点的流量，计算 7 点、6 点的历史流量对应的索引”）
     Parameters
     ----------
-    sequence_length: int, length of all history data
-    num_of_depend: int,
-    label_start_idx: int, the first index of predicting target
-    num_for_predict: int, the number of points will be predicted for each sample
+    sequence_length: int, length of all history  交通数据总时间步
+    num_of_depend: int, 要提取的该维度历史片段数
+    label_start_idx: int, the first index of predicting target  预测目标的起始索引
+    num_for_predict: int, the number of points will be predicted for each sample  每个样本预测的时间步长
     units: int, week: 7 * 24, day: 24, recent(hour): 1
-    points_per_hour: int, number of points per hour, depends on data
+    points_per_hour: int, number of points per hour, depends on data  每个小时的时间步长
     Returns
     ----------
     list[(start_idx, end_idx)]
@@ -47,6 +49,8 @@ def search_data(sequence_length, num_of_depend, label_start_idx,
 def get_sample_indices(data_sequence, num_of_weeks, num_of_days, num_of_hours,
                        label_start_idx, num_for_predict, points_per_hour=12):
     '''
+    调用search_data分别提取「周 / 日 / 小时」维度的历史特征片段，同时截取预测目标
+    （比如提取完 7 点、6 点的流量，再截取 8 点的流量作为预测目标）
     Parameters
     ----------
     data_sequence: np.ndarray
@@ -74,7 +78,8 @@ def get_sample_indices(data_sequence, num_of_weeks, num_of_days, num_of_hours,
 
     if label_start_idx + num_for_predict > data_sequence.shape[0]:
         return week_sample, day_sample, hour_sample, None
-
+    
+    # 提取周维度特征（若配置num_of_weeks>0）
     if num_of_weeks > 0:
         week_indices = search_data(data_sequence.shape[0], num_of_weeks,
                                    label_start_idx, num_for_predict,
@@ -115,6 +120,7 @@ def read_and_generate_dataset(graph_signal_matrix_filename,
                                                      num_of_hours, num_for_predict,
                                                      points_per_hour=12, save=False):
     '''
+    完成样本组装、数据集拆分、归一化、保存全流程
     Parameters
     ----------
     graph_signal_matrix_filename: str, path of graph signal matrix file
@@ -130,63 +136,42 @@ def read_and_generate_dataset(graph_signal_matrix_filename,
     target: np.ndarray,
             shape is (num_of_samples, num_of_vertices, num_for_predict)
     '''
-    data_seq = np.load(graph_signal_matrix_filename)['data']  # (sequence_length, num_of_vertices, num_of_features)
+    # 加载已预处理的数据 (来自 DataPreprocessor.save_processed_data)
+    data_file = np.load(graph_signal_matrix_filename)
+    
+    # train_data.npz 包含的键：x, y, train_x, train_target, val_x, val_target, test_x, test_target, mean, std
+    # 直接使用已经划分和格式化好的数据
+    train_x = data_file['train_x']  # (B, T, N, F)
+    train_target = data_file['train_target']  # (B, T, N) 或 (B, N, T)
+    val_x = data_file['val_x']
+    val_target = data_file['val_target']
+    test_x = data_file['test_x']
+    test_target = data_file['test_target']
+    
+    print(f"Loaded train_x shape: {train_x.shape}")
+    print(f"Loaded train_target shape: {train_target.shape}")
 
-    all_samples = []
-    for idx in range(data_seq.shape[0]):
-        sample = get_sample_indices(data_seq, num_of_weeks, num_of_days,
-                                    num_of_hours, idx, num_for_predict,
-                                    points_per_hour)
-        if ((sample[0] is None) and (sample[1] is None) and (sample[2] is None)):
-            continue
-
-        week_sample, day_sample, hour_sample, target = sample
-
-        sample = []  # [(week_sample),(day_sample),(hour_sample),target,time_sample]
-
-        if num_of_weeks > 0:
-            week_sample = np.expand_dims(week_sample, axis=0).transpose((0, 2, 3, 1))  # (1,N,F,T)
-            sample.append(week_sample)
-
-        if num_of_days > 0:
-            day_sample = np.expand_dims(day_sample, axis=0).transpose((0, 2, 3, 1))  # (1,N,F,T)
-            sample.append(day_sample)
-
-        if num_of_hours > 0:
-            hour_sample = np.expand_dims(hour_sample, axis=0).transpose((0, 2, 3, 1))  # (1,N,F,T)
-            sample.append(hour_sample)
-
-        target = np.expand_dims(target, axis=0).transpose((0, 2, 3, 1))[:, :, 0, :]  # (1,N,T)
-        sample.append(target)
-
-        time_sample = np.expand_dims(np.array([idx]), axis=0)  # (1,1)
-        sample.append(time_sample)
-
-        all_samples.append(
-            sample)  # sampe：[(week_sample),(day_sample),(hour_sample),target,time_sample] = [(1,N,F,Tw),(1,N,F,Td),(1,N,F,Th),(1,N,Tpre),(1,1)]
-
-    split_line1 = int(len(all_samples) * 0.6)
-    split_line2 = int(len(all_samples) * 0.8)
-
-    training_set = [np.concatenate(i, axis=0)
-                    for i in zip(*all_samples[:split_line1])]  # [(B,N,F,Tw),(B,N,F,Td),(B,N,F,Th),(B,N,Tpre),(B,1)]
-    validation_set = [np.concatenate(i, axis=0)
-                      for i in zip(*all_samples[split_line1: split_line2])]
-    testing_set = [np.concatenate(i, axis=0)
-                   for i in zip(*all_samples[split_line2:])]
-
-    train_x = np.concatenate(training_set[:-2], axis=-1)  # (B,N,F,T')
-    val_x = np.concatenate(validation_set[:-2], axis=-1)
-    test_x = np.concatenate(testing_set[:-2], axis=-1)
-
-    train_target = training_set[-2]  # (B,N,T)
-    val_target = validation_set[-2]
-    test_target = testing_set[-2]
-
-    train_timestamp = training_set[-1]  # (B,1)
-    val_timestamp = validation_set[-1]
-    test_timestamp = testing_set[-1]
-
+    # 数据已经是 (B, T, N, F) 或 (B, N, T) 格式，需要转换为 ASTGCN 所需的 (B, N, F, T) 格式
+    # 转换 train_x: (B, T, N, F) -> (B, N, F, T)
+    train_x = np.transpose(train_x, (0, 2, 3, 1))
+    val_x = np.transpose(val_x, (0, 2, 3, 1))
+    test_x = np.transpose(test_x, (0, 2, 3, 1))
+    
+    # 转换 target: 如果是 (B, T, N) -> (B, N, T)
+    if len(train_target.shape) == 3 and train_target.shape[1] != num_of_vertices:
+        train_target = np.transpose(train_target, (0, 2, 1))
+        val_target = np.transpose(val_target, (0, 2, 1))
+        test_target = np.transpose(test_target, (0, 2, 1))
+    
+    print(f"After transpose - train_x shape: {train_x.shape}")
+    print(f"After transpose - train_target shape: {train_target.shape}")
+    
+    # 生成时间戳
+    train_timestamp = np.arange(len(train_x)).reshape(-1, 1)
+    val_timestamp = np.arange(len(val_x)).reshape(-1, 1)
+    test_timestamp = np.arange(len(test_x)).reshape(-1, 1)
+    
+    # 归一化
     (stats, train_x_norm, val_x_norm, test_x_norm) = normalization(train_x, val_x, test_x)
 
     all_data = {
@@ -277,7 +262,7 @@ parser.add_argument("--config", default='configurations/METR_LA_astgcn.conf', ty
 args = parser.parse_args()
 config = configparser.ConfigParser()
 print('Read configuration file: %s' % (args.config))
-config.read(args.config)
+config.read(args.config, encoding='utf-8')
 data_config = config['Data']
 training_config = config['Training']
 
@@ -301,6 +286,8 @@ points_per_hour = int(data_config['points_per_hour'])
 num_for_predict = int(data_config['num_for_predict'])
 graph_signal_matrix_filename = data_config['graph_signal_matrix_filename']
 data = np.load(graph_signal_matrix_filename)
-data['data'].shape
+
+print(f"Loaded data file: {graph_signal_matrix_filename}")
+print(f"Available keys: {list(data.keys())}")
 
 all_data = read_and_generate_dataset(graph_signal_matrix_filename, 0, 0, num_of_hours, num_for_predict, points_per_hour=points_per_hour, save=True)

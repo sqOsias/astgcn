@@ -2,24 +2,13 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="c814d5e5-bf28-4d28-8b3d-7f1979b6bd66" name="Default Changelist" comment="feature(0308):add run results;start backend and frontend">
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/server.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/inference.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/models.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/css/style.css" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/index.html" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/js/app.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/model/ASTGCN_ensemble.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/model/ASTGCN_r.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/model/MSTGCN_r.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/run_train_pipeline.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/realtime_simulator.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/run_backend.sh" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/run_backend.sh" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/train.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/train_ASTGCN_r.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/train_MSTGCN_r.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README_PROJECT_DOCS.md" beforeDir="false" afterPath="$PROJECT_DIR$/README_PROJECT_DOCS.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/configurations/PEMS04_astgcn.conf" beforeDir="false" afterPath="$PROJECT_DIR$/configurations/PEMS04_astgcn.conf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/evaluate/analyze_data_quality.py" beforeDir="false" afterPath="$PROJECT_DIR$/evaluate/analyze_data_quality.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/lib/utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/prepareData.py" beforeDir="false" afterPath="$PROJECT_DIR$/prepareData.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -99,18 +88,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "sqOsias"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;sqOsias&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "git@github.com:sqOsias/astgcn.git",
-    "accountId": "a43df3db-dbe8-49fd-9bfe-18fd0a7e693d"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;git@github.com:sqOsias/astgcn.git&quot;,
+    &quot;accountId&quot;: &quot;a43df3db-dbe8-49fd-9bfe-18fd0a7e693d&quot;
   }
-}]]></component>
+}</component>
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
@@ -285,7 +274,8 @@
       <workItem from="1772933265035" duration="14000" />
       <workItem from="1772933316355" duration="13000" />
       <workItem from="1772970600966" duration="3433000" />
-      <workItem from="1773021109993" duration="15401000" />
+      <workItem from="1773021109993" duration="16052000" />
+      <workItem from="1773109065023" duration="6123000" />
     </task>
     <task id="LOCAL-00001" summary="feat:update readme file">
       <option name="closed" value="true" />

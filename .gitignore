@@ -1,9 +1,9 @@
 __pycache__/
 *.pyc
 .vscode/
-data/
 
-data/
+
+# data/
 experiments/
 *.npz
 *.h5

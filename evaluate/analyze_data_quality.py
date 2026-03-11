@@ -11,11 +11,16 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+import json
 from datetime import datetime
 
 # 设置中文字体
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei']
 plt.rcParams['axes.unicode_minus'] = False
+
+# 更新为新的文件名前缀
+TRAIN_DATA_NAME = 'PEMS04_h1d1w0_train_data.npz'
+ADJ_MAT_NAME = 'PEMS04_h1d1w0_adj_mat.npy'
 
 class DataAnalyzer:
     """数据预处理分析器"""
@@ -50,9 +55,9 @@ class DataAnalyzer:
         print("加载处理后的数据")
         print("="*60)
         
-        train_data_path = os.path.join(self.processed_dir, 'train_data.npz')
-        adj_mat_path = os.path.join(self.processed_dir, 'adj_mat.npy')
-        scaler_params_path = os.path.join(self.processed_dir, 'scaler_params.pkl')
+        train_data_path = os.path.join(self.processed_dir, TRAIN_DATA_NAME)
+        adj_mat_path = os.path.join(self.processed_dir, ADJ_MAT_NAME)
+        scaler_params_path = os.path.join(self.processed_dir, 'scaler_params.json')
         
         if not os.path.exists(train_data_path):
             print(f"❌ 处理后的数据文件不存在：{train_data_path}")
@@ -60,10 +65,11 @@ class DataAnalyzer:
         
         # 加载特征和标签
         data = np.load(train_data_path)
-        self.processed_x = data['x']
-        self.processed_y = data['y']
-        print(f"✓ 处理后特征 X 形状：{self.processed_x.shape}")
-        print(f"✓ 处理后标签 Y 形状：{self.processed_y.shape}")
+        self.processed_x = data['train_x'] # 注意：npz中key是train_x, val_x, test_x，这里只取训练集做分析
+        self.processed_y = data['train_target']
+        print(f"✓ 处理后特征 X (Train) 形状：{self.processed_x.shape}")
+        print(f"  (Batch, Node, Feature, Time)")
+        print(f"✓ 处理后标签 Y (Train) 形状：{self.processed_y.shape}")
         
         # 加载邻接矩阵
         if os.path.exists(adj_mat_path):
@@ -78,13 +84,12 @@ class DataAnalyzer:
             print(f"✓ 邻接矩阵稀疏度：{sparsity:.2%} (非零元素占比)")
             print(f"✓ 每个节点平均连接数：{np.sum(self.adj_matrix != 0, axis=1).mean():.1f} 个邻居")
         
-        # 加载归一化参数
-        import pickle
+        # 加载归一化参数 (JSON)
         if os.path.exists(scaler_params_path):
-            with open(scaler_params_path, 'rb') as f:
-                params = pickle.load(f)
-            self.mean = params['mean']
-            self.std = params['std']
+            with open(scaler_params_path, 'r') as f:
+                params = json.load(f)
+            self.mean = np.array(params['mean'])
+            self.std = np.array(params['std'])
             print(f"✓ 归一化均值：{self.mean}")
             print(f"✓ 归一化标准差：{self.std}")
         
@@ -200,22 +205,29 @@ class DataAnalyzer:
         if hasattr(self, 'processed_x'):
             ax = axes[1, 0]
             # processed_x shape: (samples, nodes, features, timesteps)
-            speed_processed = self.processed_x[:, node_idx, 0, :]  # 假设使用速度特征
+            # features: 0:Flow, 1:Occ, 2:Speed, 3:Hour, 4:Day
+            # 我们取 Speed (index 2)
+            # 取所有样本的第 0 个时间步（最近时刻）
+            speed_processed = self.processed_x[:, node_idx, 2, -1] 
             speed_processed_flat = speed_processed.flatten()
             ax.hist(speed_processed_flat, bins=50, color='lightgreen', edgecolor='black', alpha=0.7)
             ax.set_xlabel('Normalized Speed')
             ax.set_ylabel('Frequency')
-            ax.set_title(f'Node {node_idx} - Processed Speed Distribution')
+            ax.set_title(f'Node {node_idx} - Processed Speed Distribution (Normalized)')
             ax.grid(True, alpha=0.3)
         
-        # 2.4 处理后速度时序
+        # 2.4 处理后速度时序 (重构)
         if hasattr(self, 'processed_x'):
             ax = axes[1, 1]
-            speed_processed_sample = self.processed_x[0, node_idx, 0, :]  # 第一个样本
-            ax.plot(range(len(speed_processed_sample)), speed_processed_sample, 'g-', linewidth=1)
-            ax.set_xlabel('Time Step')
+            # 由于 processed_x 是切片后的样本，直接画连续时序比较困难
+            # 我们取前 288 个样本的“当前时刻”值来近似
+            sample_range = min(288, self.processed_x.shape[0])
+            speed_processed_sample = self.processed_x[:sample_range, node_idx, 2, -1]
+            ax.plot(range(sample_range), speed_processed_sample, 'g-', linewidth=1, label='Processed (Norm)')
+            ax.set_xlabel('Sample Index')
             ax.set_ylabel('Normalized Speed')
-            ax.set_title(f'Node {node_idx} - Processed Speed Time Series')
+            ax.set_title(f'Node {node_idx} - Processed Speed Series (First {sample_range} Samples)')
+            ax.legend()
             ax.grid(True, alpha=0.3)
         
         plt.tight_layout()

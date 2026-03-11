@@ -172,43 +172,42 @@ def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_d
         test_x = file_data['test_x']
         test_target = file_data['test_target']
         
-        # 兼容性处理：只取速度通道(索引2)作为目标
-        # PEMS04: 0-flow, 1-occupy, 2-speed, 3-hour_norm, 4-day_norm
+        # PEMS04预处理后的数据 (train_data.npz)
+        # DataPreprocessor 输出形状:
+        #   x: (B, N, F, T) -> (10015, 307, 5, 24)
+        #   y: (B, N, T)    -> (10015, 307, 12)
         
-        # 检查数据维度，PEMS04预处理后是 (B, T, N, F)
-        # ASTGCN 需要 (B, N, F, T)
-        if train_x.shape[1] == 12 and train_x.shape[2] == 307: # (B, T, N, F)
-            train_x = train_x.transpose(0, 2, 3, 1) # (B, N, F, T)
-            val_x = val_x.transpose(0, 2, 3, 1)
-            test_x = test_x.transpose(0, 2, 3, 1)
-            
-            train_target = train_target.transpose(0, 2, 1) # (B, T, N) -> (B, N, T)
-            val_target = val_target.transpose(0, 2, 1)
-            test_target = test_target.transpose(0, 2, 1)
+        # 验证并调整维度 (ASTGCN 需要: B, N, F, T)
+        if train_x.ndim == 4 and train_x.shape[2] == 5:
+             # 已经是理想形状 (B, N, F, T)
+             # 但如果之前代码做了 transpose，这里需要确认 DataPreprocessor 的输出
+             # DataPreprocessor 输出: x_sample.transpose(1, 2, 0) -> (N, F+2, T_total)
+             # 然后 package -> np.array([samples]) -> (B, N, F, T)
+             # 所以这里不需要 transpose，直接使用
+             pass
+        elif train_x.shape[1] == 12 and train_x.shape[2] == 307: 
+             # 旧版逻辑兼容 (B, T, N, F) -> (B, N, F, T)
+             train_x = train_x.transpose(0, 2, 3, 1) 
+             val_x = val_x.transpose(0, 2, 3, 1)
+             test_x = test_x.transpose(0, 2, 3, 1)
+             
+             train_target = train_target.transpose(0, 2, 1) 
+             val_target = val_target.transpose(0, 2, 1)
+             test_target = test_target.transpose(0, 2, 1)
 
         # 动态选择通道
-        # 如果有5个通道 (Speed, Time, Time)，我们取 [2, 3, 4]
-        # 如果只有3个通道 (Flow, Occ, Speed)，我们取 [2] (Speed)
-        if train_x.shape[2] >= 5:
-            # 取 Speed, Hour, Day
-            # Indices: 2, 3, 4
-            # 注意：ASTGCN 需要 in_channels = 3
-            train_x = train_x[:, :, 2:5, :] 
-            val_x = val_x[:, :, 2:5, :]
-            test_x = test_x[:, :, 2:5, :]
-            
-            # Mean/Std 只需要 Speed 的 (用于反归一化)
-            mean = file_data['mean'][2] 
-            std = file_data['std'][2]
-        else:
-            # 只有 Speed (或原始3通道)
-            # 强制只取速度通道 (Index 2)
-            train_x = train_x[:, :, 2:3, :] 
-            val_x = val_x[:, :, 2:3, :]
-            test_x = test_x[:, :, 2:3, :]
-            
-            mean = file_data['mean'][2] # 速度均值
-            std = file_data['std'][2]   # 速度方差
+        # DataPreprocessor 输出 5 通道: [Flow, Occ, Speed, Hour, Day]
+        # 如果配置文件 in_channels=5，我们取全部
+        # 如果 in_channels=3，我们取 [Speed, Hour, Day] (即 indices 2,3,4)
+        
+        # 这里我们不再硬编码，而是返回所有通道，让模型决定切片，或者在这里切片
+        # 为了兼容性，我们直接返回全部 5 个通道，但需要确保模型配置正确
+        
+        # Mean/Std (用于反归一化)
+        # DataPreprocessor 保存的是所有通道的 mean/std (shape: 3,)
+        # 我们只需要 Speed 的 (index 2)
+        mean = file_data['mean'][2] 
+        std = file_data['std'][2]
         
         # 构造成 (1, 1, 1, 1) 格式以匹配后续反归一化
         mean = np.array([[[[mean]]]])
